@@ -10,20 +10,23 @@ import os
 
 st.set_page_config(page_title="Mi App", layout="wide")
 logo = Image.open("imagenes/logo.jpg")
-st.image(logo,caption=None,use_container_width=True)
+st.image(logo, caption=None, use_container_width=True)
 
 logo = Image.open("imagenes/ods.png")
-st.image(logo,caption=None,use_container_width=True)
+st.image(logo, caption=None, use_container_width=True)
 
 ##############################################################################
+
 
 def img_to_base64(img_path):
     """Convierte una imagen local en una cadena Base64 para HTML."""
     if os.path.exists(img_path):
         with open(img_path, "rb") as image_file:
             encoded = base64.b64encode(image_file.read()).decode()
-            return f"data:image/png;base64,{encoded}" # Ajusta png/jpg si es necesario
-    return img_path # Si no existe o ya es URL, devuelve lo mismo
+            # Ajusta png/jpg si es necesario
+            return f"data:image/png;base64,{encoded}"
+    return img_path  # Si no existe o ya es URL, devuelve lo mismo
+
 
 # Diccionario oficial de metas y nombres de los ODS
 ODS_INFO = {
@@ -46,6 +49,13 @@ ODS_INFO = {
     17: {"nombre": "Alianzas para lograr los objetivos", "color": "#1A3A68", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-17.png"}
 }
 
+# AJUSTE DE VALIDACIÓN DE PREDICCIONES - Javier Obando
+# Evita asignar una ODS cuando el texto contiene muy pocos términos conocidos
+# por el modelo o cuando las dos mejores clases tienen puntajes muy cercanos.
+MIN_CARACTERISTICAS = 3
+MIN_MARGEN = 0.15
+
+
 def limpiar_texto(texto):
     """Aplica la misma normalización usada en el entrenamiento."""
     if not isinstance(texto, str):
@@ -55,10 +65,33 @@ def limpiar_texto(texto):
     texto = re.sub(r'\s+', ' ', texto).strip()
     return texto
 
+
 @st.cache_resource
 def cargar_modelo():
     """Carga el pipeline serializado en caché."""
     return joblib.load('modelo/modelo_ods_pipeline.joblib')
+
+
+def predecir_ods(modelo, texto):
+    """Devuelve una ODS solo cuando el texto aporta evidencia suficiente."""
+    # INICIO DEL AJUSTE - Javier Obando
+    tfidf = modelo.named_steps['tfidf'].transform([texto])
+    caracteristicas = int(tfidf.getnnz())
+
+    if caracteristicas < MIN_CARACTERISTICAS:
+        return None, caracteristicas, None
+
+    representacion = modelo.named_steps['lsa'].transform(tfidf)
+    puntajes = modelo.named_steps['clf'].decision_function(representacion)[0]
+    orden = np.argsort(puntajes)
+    margen = float(puntajes[orden[-1]] - puntajes[orden[-2]])
+
+    if margen < MIN_MARGEN:
+        return None, caracteristicas, margen
+
+    # FIN DEL AJUSTE - Javier Obando
+    return int(modelo.classes_[orden[-1]]), caracteristicas, margen
+
 
 # Configuración de página
 st.set_page_config(
@@ -68,9 +101,9 @@ st.set_page_config(
 
 st.title("Clasificador de Textos según los ODS")
 st.markdown(
-      'Esta herramienta procesa textos libres de planeación y políticas públicas mediante **NLP (TF-IDF + LSA)** y **Machine Learning** para identificar su alineación con los <a href="https://www.un.org/sustainabledevelopment/es/" target="_blank">Objetivos de Desarrollo Sostenible (Agenda 2030)</a>',
-      unsafe_allow_html=True,
-  )
+    'Esta herramienta procesa textos libres de planeación y políticas públicas mediante **NLP (TF-IDF + LSA)** y **Machine Learning** para identificar su alineación con los <a href="https://www.un.org/sustainabledevelopment/es/" target="_blank">Objetivos de Desarrollo Sostenible (Agenda 2030)</a>',
+    unsafe_allow_html=True,
+)
 
 try:
     pipeline = cargar_modelo()
@@ -87,7 +120,8 @@ texto_input = st.text_area(
 
 col_btn, _ = st.columns([1, 3])
 with col_btn:
-    analizar = st.button("Clasificar Texto", type="secondary", use_container_width=True)
+    analizar = st.button("Clasificar Texto",
+                         type="secondary", use_container_width=True)
 
 if analizar:
     if not texto_input.strip():
@@ -95,42 +129,54 @@ if analizar:
     else:
         # Preprocesamiento idéntico al pipeline
         texto_limpio = limpiar_texto(texto_input)
-        
+
         # Inferencia
-        pred_ods = int(pipeline.predict([texto_limpio])[0])
-        info = ODS_INFO.get(pred_ods, {"nombre": "Desconocido", "color": "#333333"})
-        
-        # Probabilidades si el clasificador las soporta
-        tiene_proba = hasattr(pipeline.named_steps['clf'], 'predict_proba')
-      
+        # Se aplica el ajuste de validación antes de mostrar una ODS.
+        pred_ods, caracteristicas, margen = predecir_ods(
+            pipeline, texto_limpio)
+
         st.subheader("Resultado de la Clasificación")
 
-        img_base64 = img_to_base64(info['icono'])
-        
-        # Tarjeta visual con color representativo del ODS
-        st.markdown(
-            f"""
-            <div style="background-color: {info['color']}; padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px; align-items: center; display: flex;">
-                <img src="{img_base64}" alt="Icono ODS {pred_ods}" style="width: 100px; vertical-align: middle; margin-right: 10px;">
-                <h2 style="margin:0; color: white;"> ODS {pred_ods}: {info['nombre']}</h2>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        
-        # Desglose de probabilidades top 3
-        if tiene_proba:
-            probas = pipeline.predict_proba([texto_limpio])[0]
-            clases = pipeline.classes_
-            df_probas = pd.DataFrame({
-                "ODS": [f"ODS {c}: {ODS_INFO.get(c, {}).get('nombre', '')}" for c in clases],
-                "Probabilidad": probas
-            }).sort_values(by="Probabilidad", ascending=False).reset_index(drop=True)
-            
-            st.write("**Top 3 ODS más afines:**")
-            for i in range(min(3, len(df_probas))):
-                fila = df_probas.iloc[i]
-                st.progress(float(fila["Probabilidad"]), text=f"{fila['ODS']} ({fila['Probabilidad']*100:.1f}%)")
+        if pred_ods is None:
+            st.warning(
+                "No hay evidencia suficiente para asignar un ODS. "
+                "Escribe una descripción más completa y relacionada con un objetivo de desarrollo sostenible."
+            )
+        else:
+            info = ODS_INFO.get(
+                pred_ods, {"nombre": "Desconocido", "color": "#333333"})
+            img_base64 = img_to_base64(info['icono'])
+
+            # Tarjeta visual con color representativo del ODS
+            st.markdown(
+                f"""
+                <div style="background-color: {info['color']}; padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px; align-items: center; display: flex;">
+                    <img src="{img_base64}" alt="Icono ODS {pred_ods}" style="width: 100px; vertical-align: middle; margin-right: 10px;">
+                    <h2 style="margin:0; color: white;"> ODS {pred_ods}: {info['nombre']}</h2>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            # Desglose de probabilidades top 3
+            if hasattr(pipeline.named_steps['clf'], 'predict_proba'):
+                probas = pipeline.predict_proba([texto_limpio])[0]
+                clases = pipeline.classes_
+                df_probas = pd.DataFrame({
+                    "ODS": [f"ODS {c}: {ODS_INFO.get(c, {}).get('nombre', '')}" for c in clases],
+                    "Probabilidad": probas
+                }).sort_values(by="Probabilidad", ascending=False).reset_index(drop=True)
+
+                st.write("**Top 3 ODS más afines:**")
+                for i in range(min(3, len(df_probas))):
+                    fila = df_probas.iloc[i]
+                    st.progress(float(
+                        fila["Probabilidad"]), text=f"{fila['ODS']} ({fila['Probabilidad']*100:.1f}%)")
+
+        with st.expander("Detalles de la predicción"):
+            st.write(f"Características reconocidas: {caracteristicas}")
+            if margen is not None:
+                st.write(f"Margen de decisión: {margen:.3f}")
 
 ###############################################################################
 
