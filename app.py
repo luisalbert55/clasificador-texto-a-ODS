@@ -5,36 +5,45 @@ import joblib
 import re
 import numpy as np
 import pandas as pd
+import base64
+import os
 
 st.set_page_config(page_title="Mi App", layout="wide")
-logo = Image.open("logo.jpg")
+logo = Image.open("imagenes/logo.jpg")
 st.image(logo,caption=None,use_container_width=True)
 
-logo = Image.open("ods.png")
+logo = Image.open("imagenes/ods.png")
 st.image(logo,caption=None,use_container_width=True)
 
 ##############################################################################
 
+def img_to_base64(img_path):
+    """Convierte una imagen local en una cadena Base64 para HTML."""
+    if os.path.exists(img_path):
+        with open(img_path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode()
+            return f"data:image/png;base64,{encoded}" # Ajusta png/jpg si es necesario
+    return img_path # Si no existe o ya es URL, devuelve lo mismo
 
 # Diccionario oficial de metas y nombres de los ODS
 ODS_INFO = {
-    1: {"nombre": "Fin de la pobreza", "color": "#E6002D"},
-    2: {"nombre": "Hambre cero", "color": "#D29E36"},
-    3: {"nombre": "Salud y bienestar", "color": "#379B4E"},
-    4: {"nombre": "Educación de calidad", "color": "#BF1332"},
-    5: {"nombre": "Igualdad de género", "color": "#EB382D"},
-    6: {"nombre": "Agua limpia y saneamiento", "color": "#20B0D7"},
-    7: {"nombre": "Energía asequible y no contaminante", "color": "#FBB42F"},
-    8: {"nombre": "Trabajo decente y crecimiento económico", "color": "#8C1137"},
-    9: {"nombre": "Industria, innovación e infraestructura", "color": "#EF692C"},
-    10: {"nombre": "Reducción de las desigualdades", "color": "#DC0081"},
-    11: {"nombre": "Ciudades y comunidades sostenibles", "color": "#F69A34"},
-    12: {"nombre": "Producción y consumo responsables", "color": "#CD8B34"},
-    13: {"nombre": "Acción por el clima", "color": "#4C7742"},
-    14: {"nombre": "Vida submarina", "color": "#0E7FBA"},
-    15: {"nombre": "Vida de ecosistemas terrestres", "color": "#4BB051"},
-    16: {"nombre": "Paz, justicia e instituciones sólidas", "color": "#065789"},
-    17: {"nombre": "Alianzas para lograr los objetivos", "color": "#1A3A68"}
+    1: {"nombre": "Fin de la pobreza", "color": "#E6002D", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-01.png"},
+    2: {"nombre": "Hambre cero", "color": "#D29E36", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-02.png"},
+    3: {"nombre": "Salud y bienestar", "color": "#379B4E", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-03.png"},
+    4: {"nombre": "Educación de calidad", "color": "#BF1332", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-04.png"},
+    5: {"nombre": "Igualdad de género", "color": "#EB382D", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-05.png"},
+    6: {"nombre": "Agua limpia y saneamiento", "color": "#20B0D7", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-06.png"},
+    7: {"nombre": "Energía asequible y no contaminante", "color": "#FBB42F", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-07.png"},
+    8: {"nombre": "Trabajo decente y crecimiento económico", "color": "#8C1137", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-08.png"},
+    9: {"nombre": "Industria, innovación e infraestructura", "color": "#EF692C", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-09.png"},
+    10: {"nombre": "Reducción de las desigualdades", "color": "#DC0081", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-10.png"},
+    11: {"nombre": "Ciudades y comunidades sostenibles", "color": "#F69A34", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-11.png"},
+    12: {"nombre": "Producción y consumo responsables", "color": "#CD8B34", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-12.png"},
+    13: {"nombre": "Acción por el clima", "color": "#4C7742", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-13.png"},
+    14: {"nombre": "Vida submarina", "color": "#0E7FBA", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-14.png"},
+    15: {"nombre": "Vida de ecosistemas terrestres", "color": "#4BB051", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-15.png"},
+    16: {"nombre": "Paz, justicia e instituciones sólidas", "color": "#065789", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-16.png"},
+    17: {"nombre": "Alianzas para lograr los objetivos", "color": "#1A3A68", "icono": "imagenes/S_SDG-goals_icons-individual-rgb-17.png"}
 }
 
 def limpiar_texto(texto):
@@ -49,7 +58,7 @@ def limpiar_texto(texto):
 @st.cache_resource
 def cargar_modelo():
     """Carga el pipeline serializado en caché."""
-    return joblib.load('modelo_ods_pipeline.joblib')
+    return joblib.load('modelo/modelo_ods_pipeline.joblib')
 
 # Configuración de página
 st.set_page_config(
@@ -93,14 +102,16 @@ if analizar:
         
         # Probabilidades si el clasificador las soporta
         tiene_proba = hasattr(pipeline.named_steps['clf'], 'predict_proba')
-        
-        st.markdown("---")
+      
         st.subheader("Resultado de la Clasificación")
+
+        img_base64 = img_to_base64(info['icono'])
         
         # Tarjeta visual con color representativo del ODS
         st.markdown(
             f"""
-            <div style="background-color: {info['color']}; padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px;">
+            <div style="background-color: {info['color']}; padding: 20px; border-radius: 10px; color: white; margin-bottom: 20px; align-items: center; display: flex;">
+                <img src="{img_base64}" alt="Icono ODS {pred_ods}" style="width: 100px; vertical-align: middle; margin-right: 10px;">
                 <h2 style="margin:0; color: white;"> ODS {pred_ods}: {info['nombre']}</h2>
             </div>
             """,
