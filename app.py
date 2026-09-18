@@ -50,9 +50,9 @@ ODS_INFO = {
 }
 
 # AJUSTE DE VALIDACIÓN DE PREDICCIONES - Javier Obando
-# Evita asignar una ODS cuando el texto contiene muy pocos términos conocidos
-# por el modelo o cuando las dos mejores clases tienen puntajes muy cercanos.
-MIN_CARACTERISTICAS = 3
+# Rechaza textos sin términos conocidos y predicciones donde las dos mejores
+# clases tienen puntajes cercanos; permite textos cortos con una señal clara.
+MIN_CARACTERISTICAS = 1
 MIN_MARGEN = 0.15
 
 
